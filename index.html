@@ -1,0 +1,363 @@
+<meta charset="utf-8">
+<title>Bilgisayarcı Simülatör</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+  /* Yerleşim: tam ekran 3D sahne; üstte kasa bilgisi, sağda kâğıt servis fişi, altta parça kataloğu. */
+  :root {
+    --ink: #10161f;
+    --panel: rgba(16, 22, 31, 0.88);
+    --line: #2b3747;
+    --text: #e8edf3;
+    --muted: #93a1b3;
+    --tea: #e39b3a;
+    --tea-deep: #b8701a;
+    --paper: #fbfaf5;
+    --paper-ink: #1d1f24;
+    --paper-rule: #d9d5c9;
+    --ok: #2f9e64;
+    --bad: #d9473d;
+    --font-display: "Chakra Petch", "IBM Plex Sans", system-ui, sans-serif;
+    --font-body: "IBM Plex Sans", system-ui, sans-serif;
+    --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+    --ticket-w: 330px;
+    --cat-h: 148px;
+    color-scheme: dark;
+  }
+  [hidden] { display: none !important; }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; overflow: hidden; }
+  body {
+    background: var(--ink);
+    color: var(--text);
+    font: 14px/1.4 var(--font-body);
+    -webkit-font-smoothing: antialiased;
+    touch-action: none;
+  }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  button:focus-visible { outline: 2px solid var(--tea); outline-offset: 2px; }
+  #scene { position: fixed; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; }
+
+  /* Üst bar */
+  .hud {
+    position: fixed;
+    top: calc(12px + env(safe-area-inset-top, 0px));
+    left: max(16px, env(safe-area-inset-left, 0px));
+    right: calc(var(--ticket-w) + max(16px, env(safe-area-inset-right, 0px)) + 16px);
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch;
+    pointer-events: none;
+  }
+  .hud > * { pointer-events: auto; }
+  .brand, .stat, .views {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+    backdrop-filter: blur(6px);
+  }
+  .brand { display: flex; align-items: center; gap: 10px; padding: 6px 12px 6px 8px; }
+  .logo {
+    font: 700 13px/1 var(--font-display); letter-spacing: 0.06em;
+    background: var(--tea); color: var(--ink); padding: 6px 7px; border-radius: 4px;
+  }
+  .brand b { font: 600 16px/1.1 var(--font-display); letter-spacing: 0.02em; }
+  .brand small { display: block; color: var(--muted); font-size: 11px; letter-spacing: 0.04em; }
+  .stat { padding: 6px 12px; min-width: 84px; }
+  .stat .k { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); }
+  .stat b { font: 600 17px/1.2 var(--font-mono); font-variant-numeric: tabular-nums; }
+  #money.neg { color: #ff8a80; }
+  #rep { color: var(--tea); letter-spacing: 0.08em; }
+  .views { display: flex; gap: 2px; padding: 3px; }
+  .views button {
+    background: transparent; border: 0; border-radius: 4px; padding: 6px 10px; font-size: 13px; color: var(--muted);
+  }
+  .views button:hover { background: #1e2835; color: var(--text); }
+
+  /* Servis fişi */
+  .ticket {
+    position: fixed;
+    top: calc(12px + env(safe-area-inset-top, 0px));
+    right: max(16px, env(safe-area-inset-right, 0px));
+    width: var(--ticket-w);
+    max-height: calc(100% - 24px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .ticket-toggle { display: none; }
+  .paper {
+    flex: 1 1 auto; min-height: 0; overflow: auto;
+    background: var(--paper); color: var(--paper-ink);
+    padding: 14px 16px 16px; border-radius: 2px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+    font-family: var(--font-mono); font-size: 12.5px;
+    /* termal fiş: tırtıklı alt kenar */
+    -webkit-mask: radial-gradient(circle 5px at 50% 100%, transparent 98%, #000) 0 0 / 12px 100% repeat-x;
+            mask: radial-gradient(circle 5px at 50% 100%, transparent 98%, #000) 0 0 / 12px 100% repeat-x;
+    padding-bottom: 22px;
+    transition: transform 0.35s ease;
+  }
+  .ticket.fresh .paper { animation: print 0.6s ease; }
+  @keyframes print { from { transform: translateY(-14px); opacity: 0.2; } to { transform: none; opacity: 1; } }
+  .t-head { display: flex; justify-content: space-between; font-weight: 600; letter-spacing: 0.08em; font-size: 11px; color: #6a6658; }
+  .t-cust { margin-top: 10px; display: flex; flex-direction: column; }
+  .t-cust b { font: 700 20px/1.15 var(--font-display); }
+  .t-cust span { color: var(--tea-deep); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; }
+  .t-quote { font-family: var(--font-body); font-size: 13.5px; line-height: 1.45; margin: 8px 0 10px; color: #3b3d43; text-wrap: pretty; }
+  .rule { border: 0; border-top: 1px dashed var(--paper-rule); margin: 10px 0; }
+  .sec { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.1em; color: #7b776a; margin: 0 0 6px; font-weight: 600; }
+  dl { margin: 0; display: grid; gap: 3px; }
+  dl > div { display: flex; justify-content: space-between; gap: 10px; }
+  dt { color: #6a6658; white-space: nowrap; }
+  dd { margin: 0; text-align: right; min-width: 0; }
+  dl > div.empty dd { color: #b0ab9d; }
+  .board-line { font-weight: 600; font-size: 12.5px; }
+  .t-reqs { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+  .t-reqs li { display: grid; grid-template-columns: 16px 1fr auto; gap: 6px; align-items: baseline; }
+  .t-reqs .mark { font-weight: 700; }
+  .t-reqs li.ok .mark { color: var(--ok); }
+  .t-reqs li.no .mark { color: #a9a493; }
+  .t-reqs .val { color: #6a6658; font-variant-numeric: tabular-nums; }
+  .stats { display: flex; gap: 14px; }
+  .stats div { display: flex; flex-direction: column; }
+  .stats span { font-size: 10.5px; color: #7b776a; text-transform: uppercase; letter-spacing: 0.08em; }
+  .stats b { font-variant-numeric: tabular-nums; }
+  .stats b.bad { color: var(--bad); }
+  .leds { display: flex; gap: 10px; flex-wrap: wrap; }
+  .led { display: flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; color: #6a6658; }
+  .led i { width: 9px; height: 9px; border-radius: 50%; background: #d4d0c4; box-shadow: inset 0 0 0 1px rgba(0,0,0,.15); }
+  .led[data-state="on"] i, .led[data-state="fail"] i { background: var(--c); box-shadow: 0 0 8px var(--c); }
+  .led[data-state="fail"] { color: var(--paper-ink); }
+  .led[data-state="on"] i { animation: blink 0.5s steps(2) infinite; }
+  @keyframes blink { 50% { opacity: 0.35; } }
+  #t-money .total { margin-top: 4px; padding-top: 6px; border-top: 1px solid var(--paper-ink); font-weight: 700; font-size: 14px; }
+  #t-money .total dt { color: var(--paper-ink); }
+  #t-money .pos dd { color: var(--ok); }
+  #t-money .neg dd { color: var(--bad); }
+  dd { font-variant-numeric: tabular-nums; }
+
+  .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .actions button {
+    border: 1px solid var(--line); background: var(--panel); border-radius: 6px; padding: 10px 8px; font-weight: 600;
+  }
+  .actions button:hover:not(:disabled) { border-color: var(--muted); }
+  .actions .power {
+    grid-column: 1 / -1; display: flex; align-items: center; justify-content: center; gap: 8px;
+    background: #1c2633; font: 600 15px var(--font-display); letter-spacing: 0.04em;
+  }
+  .actions .power::before {
+    content: ""; width: 10px; height: 10px; border-radius: 50%; background: #3b4656;
+  }
+  .actions .power.live::before { background: #4fa3ff; box-shadow: 0 0 10px #4fa3ff; }
+  #btn-deliver { background: var(--tea); color: var(--ink); border-color: var(--tea); }
+  #btn-deliver:disabled { background: transparent; color: var(--muted); border-color: var(--line); cursor: not-allowed; }
+  #btn-skip { color: var(--muted); }
+
+  /* Katalog */
+  .catalog {
+    position: fixed;
+    left: max(16px, env(safe-area-inset-left, 0px));
+    right: calc(var(--ticket-w) + max(16px, env(safe-area-inset-right, 0px)) + 16px);
+    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+    backdrop-filter: blur(6px);
+    display: flex; flex-direction: column; min-width: 0;
+  }
+  .tabs { display: flex; gap: 2px; padding: 6px 6px 0; overflow-x: auto; scrollbar-width: none; }
+  .tab {
+    border: 0; background: transparent; color: var(--muted); padding: 7px 12px; border-radius: 5px 5px 0 0;
+    font: 600 13px var(--font-display); letter-spacing: 0.03em; white-space: nowrap;
+  }
+  .tab[aria-selected="true"] { color: var(--ink); background: var(--tea); }
+  .cards {
+    display: flex; gap: 8px; padding: 8px; overflow-x: auto; border-top: 2px solid var(--tea);
+    scrollbar-width: thin; scrollbar-color: var(--line) transparent;
+  }
+  .card {
+    position: relative; flex: 0 0 200px; text-align: left;
+    background: #18212d; border: 1px solid var(--line); border-radius: 6px; padding: 9px 10px;
+    display: flex; flex-direction: column; gap: 3px;
+    transition: border-color 0.15s, transform 0.15s;
+  }
+  .card:hover { border-color: var(--tea); transform: translateY(-2px); }
+  .card.on { border-color: #4f7ad1; background: #1a2638; }
+  .c-name { font-weight: 600; font-size: 13.5px; padding-right: 50px; }
+  .c-spec { color: var(--muted); font-size: 12px; line-height: 1.3; min-height: 2.6em; }
+  .c-foot { display: flex; justify-content: space-between; align-items: baseline; margin-top: 2px; }
+  .c-watt { font: 500 11.5px var(--font-mono); color: var(--muted); }
+  .c-price { font: 600 13.5px var(--font-mono); color: var(--tea); font-variant-numeric: tabular-nums; }
+  .c-badge {
+    position: absolute; top: 8px; right: 8px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+    background: #4f7ad1; color: #fff; border-radius: 3px; padding: 2px 5px;
+  }
+
+  /* Bildirimler */
+  .toasts {
+    position: fixed; top: calc(70px + env(safe-area-inset-top, 0px));
+    left: max(16px, env(safe-area-inset-left, 0px));
+    width: min(440px, calc(100% - var(--ticket-w) - 64px));
+    display: flex; flex-direction: column; gap: 6px; pointer-events: none;
+  }
+  .toast {
+    background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--muted);
+    padding: 9px 12px; border-radius: 6px; font-size: 13.5px; line-height: 1.4;
+    animation: tin 0.25s ease; transition: opacity 0.4s, transform 0.4s;
+  }
+  .toast.good { border-left-color: var(--ok); }
+  .toast.bad { border-left-color: var(--bad); }
+  .toast.info { border-left-color: var(--tea); }
+  .toast.out { opacity: 0; transform: translateX(-10px); }
+  @keyframes tin { from { opacity: 0; transform: translateY(-6px); } }
+
+  .tip {
+    position: fixed; z-index: 5; pointer-events: none; white-space: pre-line;
+    background: var(--paper); color: var(--paper-ink); font-size: 12.5px; padding: 6px 9px; border-radius: 4px;
+    box-shadow: 0 6px 16px rgba(0,0,0,.35); max-width: 240px;
+  }
+
+  /* Giriş ekranı */
+  .intro {
+    position: fixed; inset: 0; z-index: 10; display: grid; place-items: center;
+    padding: 24px max(16px, env(safe-area-inset-right, 0px)) 24px max(16px, env(safe-area-inset-left, 0px));
+    background: radial-gradient(ellipse at 50% 40%, rgba(16,22,31,.55), rgba(10,13,18,.92));
+  }
+  .intro-card { width: min(520px, 100%); display: grid; gap: 18px; }
+  .intro h1 {
+    margin: 0; font: 700 clamp(34px, 7vw, 56px)/0.95 var(--font-display); letter-spacing: -0.01em; text-wrap: balance;
+  }
+  .intro h1 span { color: var(--tea); display: block; }
+  .intro p { margin: 0; color: var(--muted); font-size: 15px; max-width: 46ch; }
+  .intro ol { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; counter-reset: s; }
+  .intro li {
+    counter-increment: s; display: grid; grid-template-columns: 28px 1fr; gap: 10px; align-items: baseline;
+    font-size: 14.5px;
+  }
+  .intro li::before {
+    content: counter(s); font: 700 13px var(--font-mono); color: var(--ink); background: var(--tea);
+    border-radius: 50%; width: 22px; height: 22px; display: grid; place-items: center;
+  }
+  .intro .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  #start {
+    background: var(--tea); color: var(--ink); border: 0; border-radius: 6px; padding: 13px 22px;
+    font: 700 17px var(--font-display); letter-spacing: 0.03em;
+  }
+  #start:hover { background: #f0aa4c; }
+  #continue-note { color: var(--muted); font-size: 13px; display: flex; gap: 8px; align-items: center; }
+  #continue-note b { color: var(--text); font-family: var(--font-mono); font-weight: 500; }
+  #btn-reset { background: none; border: 0; color: var(--muted); text-decoration: underline; padding: 0; font-size: 13px; }
+  .loading-note { position: fixed; inset: auto 0 24px; text-align: center; color: var(--muted); font-size: 13px; }
+  body.ready .loading-note { display: none; }
+  body:not(.ready) #start { opacity: 0.5; pointer-events: none; }
+
+  /* Dar ekran */
+  @media (max-width: 820px) {
+    :root { --ticket-w: 0px; --cat-h: 128px; }
+    .hud { right: max(16px, env(safe-area-inset-right, 0px)); gap: 6px; }
+    .brand small, .views [data-view="close"] { display: none; }
+    .stat { min-width: 0; padding: 4px 9px; }
+    .stat b { font-size: 14px; }
+    .ticket {
+      top: auto; left: max(16px, env(safe-area-inset-left, 0px)); width: auto;
+      bottom: calc(var(--cat-h) + 20px + env(safe-area-inset-bottom, 0px));
+      max-height: calc(100% - var(--cat-h) - 150px - env(safe-area-inset-top, 0px));
+    }
+    .ticket .paper { display: none; }
+    .ticket.open .paper { display: block; }
+    .ticket-toggle {
+      display: block; border: 1px solid var(--line); background: var(--paper); color: var(--paper-ink);
+      border-radius: 6px; padding: 8px 12px; font: 600 13px var(--font-display); text-align: left;
+    }
+    .actions { grid-template-columns: 1.3fr 1fr 0.8fr; }
+    .actions .power { grid-column: auto; font-size: 13px; }
+    .catalog { right: max(16px, env(safe-area-inset-right, 0px)); }
+    .card { flex-basis: 168px; }
+    .toasts { width: auto; right: max(16px, env(safe-area-inset-right, 0px)); top: calc(112px + env(safe-area-inset-top, 0px)); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
+</style>
+
+<canvas id="scene" aria-label="3D dükkan sahnesi"></canvas>
+
+<header class="hud">
+  <div class="brand"><span class="logo">ÇİP</span><div><b>Bilgisayarcı Simülatör</b><small>Çip Bilgisayar · Kadıköy</small></div></div>
+  <div class="stat"><span class="k">Kasa</span><b id="money">15.000 ₺</b></div>
+  <div class="stat"><span class="k">Gün</span><b id="day">1</b></div>
+  <div class="stat"><span class="k">İtibar</span><b id="rep">★★★☆☆</b></div>
+  <div class="views">
+    <button type="button" data-view="bench">Masa</button>
+    <button type="button" data-view="close">Yakın</button>
+    <button type="button" data-view="shelf">Raf</button>
+    <button type="button" id="mute" aria-pressed="false">Ses açık</button>
+  </div>
+</header>
+
+<aside class="ticket" id="ticket">
+  <button type="button" class="ticket-toggle" id="ticket-toggle">Servis fişini göster / gizle</button>
+  <div class="paper">
+    <div class="t-head"><span>SERVİS FİŞİ</span><span id="t-no">No 0000</span></div>
+    <div class="t-cust"><b id="t-name">Müşteri bekleniyor</b><span id="t-type"></span></div>
+    <p class="t-quote" id="t-quote"></p>
+    <dl><div><dt>Anakart</dt><dd id="t-board" class="board-line">—</dd></div></dl>
+    <hr class="rule">
+    <p class="sec">İstekler</p>
+    <ul class="t-reqs" id="t-reqs"></ul>
+    <hr class="rule">
+    <p class="sec">Takılı parçalar</p>
+    <dl id="t-parts"></dl>
+    <hr class="rule">
+    <div class="stats">
+      <div><span>Güç çekimi</span><b id="t-power">—</b></div>
+      <div><span>Oyun puanı</span><b id="t-score">0</b></div>
+    </div>
+    <hr class="rule">
+    <p class="sec">Anakart hata ışıkları</p>
+    <div class="leds">
+      <span class="led" data-led="cpu" style="--c:#ff3b30"><i></i>CPU</span>
+      <span class="led" data-led="dram" style="--c:#ffb020"><i></i>DRAM</span>
+      <span class="led" data-led="vga" style="--c:#8fa3ff"><i></i>VGA</span>
+      <span class="led" data-led="boot" style="--c:#2fd16a"><i></i>BOOT</span>
+    </div>
+    <hr class="rule">
+    <dl id="t-money"></dl>
+  </div>
+  <div class="actions">
+    <button type="button" id="btn-power" class="power">Güç düğmesi</button>
+    <button type="button" id="btn-deliver" disabled>Teslim et</button>
+    <button type="button" id="btn-skip">Reddet</button>
+  </div>
+</aside>
+
+<nav class="catalog" aria-label="Parça kataloğu">
+  <div class="tabs" id="tabs" role="tablist"></div>
+  <div class="cards" id="cards"></div>
+</nav>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+<div class="tip" id="tip" hidden></div>
+
+<div class="intro" id="intro">
+  <div class="intro-card">
+    <h1>Bilgisayarcı <span>Simülatör</span></h1>
+    <p>Kadıköy'de küçük bir bilgisayarcı dükkanın var. Müşteriler kasalarını getiriyor; sen topluyorsun, tamir ediyorsun, para kazanıyorsun.</p>
+    <ol>
+      <li>Servis fişini oku. Anakartın soketine ve RAM tipine dikkat et.</li>
+      <li>Parçaları alttaki listeden ya da raftan seç, kasaya kendileri takılır. Takılı parçaya tıklarsan çıkar.</li>
+      <li>Güç düğmesine bas. Bip seslerini ve anakarttaki hata ışıklarını izle, sorun yoksa teslim et.</li>
+    </ol>
+    <div class="row">
+      <button type="button" id="start">Dükkanı aç</button>
+      <span id="continue-note" hidden>Kayıt: <b></b> <button type="button" id="btn-reset">Sıfırdan başla</button></span>
+    </div>
+  </div>
+  <div class="loading-note">Dükkan hazırlanıyor…</div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module" src="src/main.js"></script>
