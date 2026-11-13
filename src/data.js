@@ -59,6 +59,11 @@ export const PARTS = [
 
 export const PART = Object.fromEntries(PARTS.map(p => [p.id, p]));
 
+// Sarf malzemeler: kasaya takılmaz, takılı parçaya uygulanır.
+export const SUPPLIES = [
+  { id: 'paste', cat: 'sup', name: 'Termal macun', price: 250, spec: 'Takılı işlemciye sürülür. Kurumuş macun ısınma yapar.' },
+];
+
 export const fmt = n => `${Math.round(n).toLocaleString('tr-TR')} ₺`;
 export const fmtGB = gb => (gb >= 1024 ? `${gb / 1024} TB` : `${gb} GB`);
 
@@ -134,6 +139,7 @@ const FAULTS = {
   gpu: ['Bilgisayar açılıyor gibi ama ekrana görüntü gelmiyor. Kablo sağlam, denedim.', 'Oyun oynarken ekran karardı, bir daha görüntü gelmedi.'],
   ssd: ['Açılıyor ama siyah ekranda "önyükleme cihazı yok" gibi bir şey yazıyor.', 'Dosyalarım gitti mi abi? İşletim sistemi açılmıyor.'],
   weakpsu: ['Masaüstü açılıyor ama oyuna girince bilgisayar birden kapanıyor.', 'Yeni ekran kartı aldım, taktım, şimdi açılıp kapanıyor.'],
+  overheat: ['Açılıyor, masaüstü geliyor, birkaç saniye sonra pat diye kapanıyor. Kasa da sıcacık.', 'Fanı uçak gibi bağırıyor, sonra bilgisayar kendini kapatıyor.'],
 };
 
 const pick = a => a[Math.floor(Math.random() * a.length)];
@@ -153,7 +159,7 @@ function buildJob(no, opts) {
 
 function randomRepair(no) {
   const board = BOARDS[Math.random() < 0.5 ? 'am5' : 'lga'];
-  const fault = pick(['psu', 'ram', 'ram', 'cpu', 'gpu', 'ssd', 'weakpsu']);
+  const fault = pick(['psu', 'ram', 'ram', 'cpu', 'gpu', 'ssd', 'weakpsu', 'overheat', 'overheat']);
   for (let tries = 0; tries < 200; tries++) {
     const cpu = pick(byCat('cpu').filter(c => c.socket === board.socket));
     const ram = pick(byCat('ram').filter(r => r.type === board.ram));
@@ -173,17 +179,19 @@ function randomRepair(no) {
     let faulty = null, allow = 0;
     if (fault === 'ram') { faulty = Math.random() < 0.5 ? 'ram0' : 'ram1'; allow = ram.price; }
     else if (fault === 'weakpsu') { allow = byCat('psu').find(p => p.cap >= st.power).price; }
+    else if (fault === 'overheat') { allow = 300; }
     else { faulty = fault; allow = set[fault].price; }
     return {
       no, type: 'repair', title: 'Arıza: ' + REPAIR_TITLE[fault], fault, board,
       customer: pick(NAMES), quote: pick(FAULTS[fault]),
-      parts: set, faulty, fee: round500(900 + Math.random() * 1400), allowance: round500(allow * 1.2 + 250),
+      parts: set, faulty, paste: fault === 'overheat' ? 'dry' : 'ok',
+      fee: round500(900 + Math.random() * 1400), allowance: round500(allow * 1.2 + 250),
     };
   }
   return null;
 }
 
-const REPAIR_TITLE = { psu: 'açılmıyor', ram: 'bip sesi', cpu: 'görüntü yok', gpu: 'görüntü yok', ssd: 'sistem açılmıyor', weakpsu: 'kendi kendine kapanıyor' };
+const REPAIR_TITLE = { psu: 'açılmıyor', ram: 'bip sesi', cpu: 'görüntü yok', gpu: 'görüntü yok', ssd: 'sistem açılmıyor', weakpsu: 'kendi kendine kapanıyor', overheat: 'açılıp kapanıyor' };
 
 // İlk üç iş öğretici; sonrası rastgele.
 export function makeJob(no) {
@@ -197,6 +205,14 @@ export function makeJob(no) {
     };
   }
   if (no === 3) return buildJob(no, { tpl: BUILDS[2], board: 'lga', name: 'Emre', margin: 1.25 });
+  if (no === 4) {
+    const set = { cpu: PART['cpu-n5'], ram: [PART['ram-5-16'], PART['ram-5-16']], gpu: PART['gpu-3060'], psu: PART['psu-650'], ssd: PART['ssd-1t'] };
+    return {
+      no, type: 'repair', title: 'Arıza: açılıp kapanıyor', fault: 'overheat', board: BOARDS.am5, customer: 'Hasan Usta',
+      quote: 'Açılıyor, masaüstü geliyor, birkaç saniye sonra pat diye kapanıyor. Kasa da sıcacık oluyor. Üç yıldır hiç açmadım içini.',
+      parts: set, faulty: null, paste: 'dry', fee: 1000, allowance: 500,
+    };
+  }
   if (Math.random() < 0.4) {
     const r = randomRepair(no);
     if (r) return r;

@@ -4,6 +4,7 @@ let ctx = null;
 let master = null;
 let fanSrc = null;
 let fanGain = null;
+let fanFilter = null;
 let muted = false;
 
 export function initAudio() {
@@ -86,7 +87,19 @@ export const sfx = {
   doorbell() { tone(988, 0.5, { vol: 0.1 }); tone(784, 0.8, { vol: 0.1, at: 0.42 }); },
   powerDown() { tone(380, 0.5, { type: 'sawtooth', vol: 0.04, slide: 50 }); },
   relay() { noise(0.02, { vol: 0.3, freq: 1500, q: 3 }); },
+  shutter() {
+    for (let i = 0; i < 26; i++) noise(0.05, { vol: 0.16 * (1 - i / 30), freq: 900 + Math.random() * 900, q: 1.5, at: i * 0.042 });
+    noise(0.5, { vol: 0.08, freq: 300, q: 0.5 });
+  },
+  stamp() { noise(0.09, { vol: 0.5, freq: 180, q: 0.8 }); tone(90, 0.12, { vol: 0.15 }); },
+  squeeze() { noise(0.35, { vol: 0.08, freq: 600, q: 4 }); },
+  hot() { tone(2400, 0.12, { type: 'square', vol: 0.04 }); tone(2400, 0.12, { type: 'square', vol: 0.04, at: 0.2 }); },
 };
+
+export function setFanPitch(k) {
+  if (fanFilter) fanFilter.frequency.setTargetAtTime(520 * k, ctx.currentTime, 0.3);
+  if (fanGain && fanSrc) fanGain.gain.setTargetAtTime(0.11 * Math.min(2, k), ctx.currentTime, 0.3);
+}
 
 export function setFan(on) {
   if (!ctx) return;
@@ -97,6 +110,7 @@ export function setFan(on) {
     fanSrc.loop = true;
     const f = ctx.createBiquadFilter();
     f.type = 'lowpass'; f.frequency.value = 520;
+    fanFilter = f;
     fanGain = ctx.createGain();
     fanGain.gain.setValueAtTime(0.0001, t);
     fanGain.gain.exponentialRampToValueAtTime(0.11, t + 0.8);
